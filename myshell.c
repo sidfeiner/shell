@@ -12,8 +12,7 @@ int runningProcesses[2];
  * Returns the index of the first appearance of `item` in array, -1 if not found
  */
 int indexOf(char **array, char *item, int count) {
-    char **limit = array + count;
-    char **tempArray;
+    char **tempArray, **limit = array + count;
     int index;
     for (tempArray = array, index = 0; tempArray < limit; tempArray++, index++) {
         if (strcmp(*tempArray, item) == 0) return index;
@@ -24,7 +23,6 @@ int indexOf(char **array, char *item, int count) {
 void execFromArgs(char **args) {
     execvp(args[0], args);
 }
-
 
 void waitAndPurge(pid_t pid, int index) {
     int status;
@@ -46,7 +44,7 @@ int processCmd(int count, char **arglist, int *pipe, int pipeDirection, int proc
     switch (pid) {
         case -1:
             printf("fork failed: %s\n", strerror(1));
-            exit(1);
+            return -1;
         case 0:
             // Child
             if (isBackground) {
@@ -88,8 +86,12 @@ int handlePipe(int count, char **arglist, int indexOfPipe) {
     }
     pid_t firstChildPid, secondChildPid;
 
-    firstChildPid = processCmd(count, arglist, fds, 1, 0, 0);
-    secondChildPid = processCmd(count - (indexOfPipe + 1), arglist + 1 + indexOfPipe, fds, 0, 1, 0);
+    if (-1 == (firstChildPid = processCmd(count, arglist, fds, 1, 0, 0))) {
+        return -1;
+    }
+    if (-1 == (secondChildPid = processCmd(count - (indexOfPipe + 1), arglist + 1 + indexOfPipe, fds, 0, 1, 0))) {
+        return -1;
+    }
     close(fds[0]);
     close(fds[1]);
 
@@ -98,9 +100,6 @@ int handlePipe(int count, char **arglist, int indexOfPipe) {
     return 1;
 }
 
-// arglist - a list of char* arguments (words) provided by the user
-// it contains count+1 items, where the last item (arglist[count]) and *only* the last is NULL
-// RETURNS - 1 if should continue, 0 otherwise
 int process_arglist(int count, char **arglist) {
     int indexOfPipe = indexOf(arglist, "|", count);
     if (indexOfPipe >= 0) {
