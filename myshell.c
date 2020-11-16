@@ -8,7 +8,7 @@
 
 int runningProcesses[2];
 
-/*
+/**
  * Returns the index of the first appearance of `item` in array, -1 if not found
  */
 int indexOf(char **array, char *item, int count) {
@@ -24,6 +24,9 @@ void execFromArgs(char **args) {
     execvp(args[0], args);
 }
 
+/**
+ * wait for process to end and once it's done, remove it from the running processes array
+ */
 void waitAndPurge(pid_t pid, int index) {
     int status;
     waitpid(pid, &status, WCONTINUED | WUNTRACED);
@@ -78,7 +81,7 @@ int processCmd(int count, char **arglist, int *pipe, int pipeDirection, int proc
 
 
 int handlePipe(int count, char **arglist, int indexOfPipe) {
-    arglist[indexOfPipe] = NULL;
+    arglist[indexOfPipe] = NULL;  // Ensure first command runs only with it's arguments
     int fds[2];
     if (pipe(fds) == -1) {
         printf("could not init pipe: %s", strerror(3));
@@ -86,9 +89,12 @@ int handlePipe(int count, char **arglist, int indexOfPipe) {
     }
     pid_t firstChildPid, secondChildPid;
 
+    // Run first command
     if (-1 == (firstChildPid = processCmd(count, arglist, fds, 1, 0, 0))) {
         return -1;
     }
+
+    // Run second command, arguments being after the pipe
     if (-1 == (secondChildPid = processCmd(count - (indexOfPipe + 1), arglist + 1 + indexOfPipe, fds, 0, 1, 0))) {
         return -1;
     }
@@ -110,15 +116,16 @@ int process_arglist(int count, char **arglist) {
     }
 }
 
+void purgeProcessAtIndex(int index, int sig) {
+    if (runningProcesses[index] != 0) {
+        kill(runningProcesses[index], sig);
+        runningProcesses[index] = 0;
+    }
+}
+
 void SIGINTHandler(int sig) {
-    if (runningProcesses[0] != 0) {
-        kill(runningProcesses[0], sig);
-        runningProcesses[0] = 0;
-    }
-    if (runningProcesses[1] != 0) {
-        kill(runningProcesses[1], sig);
-        runningProcesses[1] = 0;
-    }
+    purgeProcessAtIndex(0, sig);
+    purgeProcessAtIndex(1, sig);
 }
 
 int initHandler(int s, void (*f)(int)) {
@@ -132,11 +139,11 @@ int initHandler(int s, void (*f)(int)) {
 // prepare and finalize calls for initialization and destruction of anything required
 int prepare() {
     if (initHandler(SIGINT, SIGINTHandler) < 0) {
-        printf("could not define handler: %s\n", strerror(6));
+        printf("could not define SIGINT handler: %s\n", strerror(6));
         return 6;
     }
     if (initHandler(SIGCHLD, SIG_IGN)) {
-        printf("could not define handler: %s\n", strerror(6));
+        printf("could not define SIGCHLD handler: %s\n", strerror(6));
         return 6;
     }
     return 0;
