@@ -33,6 +33,44 @@ void waitAndPurge(pid_t pid, int index) {
     runningProcesses[index] = 0;
 }
 
+
+void purgeProcessAtIndex(int index, int sig) {
+    if (runningProcesses[index] != 0) {
+        printf("purging\n");
+        kill(runningProcesses[index], sig);
+        runningProcesses[index] = 0;
+    }
+}
+
+
+void SIGINTHandler(int sig) {
+    printf("sigint handler\n");
+    purgeProcessAtIndex(0, sig);
+    purgeProcessAtIndex(1, sig);
+}
+
+int initHandler(int s, void (*f)(int)) {
+    struct sigaction sa;
+    sa.sa_handler = f;
+    sa.sa_flags = 0;
+    sigemptyset(&sa.sa_mask);
+    return sigaction(s, &sa, NULL);
+}
+
+// prepare and finalize calls for initialization and destruction of anything required
+int prepare() {
+    if (initHandler(SIGINT , SIG_IGN) + initHandler(SIGCHLD, SIG_IGN)< 0) {
+        printf("could not define SIGINT/SIGCHLD handler: %s\n", strerror(6));
+        return 6;
+    }
+    return 0;
+}
+
+int finalize() {
+    return 0;
+}
+
+
 /**
  * @param pipe array with file descriptors. NULL if no piping is needed
  * @param pipeDirection Decides if we're reading from pipe or writing to it. 0 is read, 1 is write.
@@ -50,6 +88,13 @@ int processCmd(int count, char **arglist, int *pipe, int pipeDirection, int proc
             return -1;
         case 0:
             // Child
+            if (!isBackground) {
+                // If this is a foreground process, ensure default behaviour is enabled
+                if (initHandler(SIGINT, SIG_DFL) < 0) {
+                    printf("could not define SIGINT handler in child: %s\n", strerror(6));
+                    return 6;
+                }
+            }
             if (isBackground) {
                 arglist[count - 1] = NULL;  // Remove ampersand from command arguments
             }
@@ -114,41 +159,4 @@ int process_arglist(int count, char **arglist) {
         int pid = processCmd(count, arglist, NULL, -1, 0, 1);
         return pid >= 0 ? 1 : 0;
     }
-}
-
-void purgeProcessAtIndex(int index, int sig) {
-    if (runningProcesses[index] != 0) {
-        kill(runningProcesses[index], sig);
-        runningProcesses[index] = 0;
-    }
-}
-
-void SIGINTHandler(int sig) {
-    purgeProcessAtIndex(0, sig);
-    purgeProcessAtIndex(1, sig);
-}
-
-int initHandler(int s, void (*f)(int)) {
-    struct sigaction sa;
-    sa.sa_handler = f;
-    sa.sa_flags = 0;
-    sigemptyset(&sa.sa_mask);
-    return sigaction(s, &sa, NULL);
-}
-
-// prepare and finalize calls for initialization and destruction of anything required
-int prepare() {
-    if (initHandler(SIGINT, SIGINTHandler) < 0) {
-        printf("could not define SIGINT handler: %s\n", strerror(6));
-        return 6;
-    }
-    if (initHandler(SIGCHLD, SIG_IGN)) {
-        printf("could not define SIGCHLD handler: %s\n", strerror(6));
-        return 6;
-    }
-    return 0;
-}
-
-int finalize() {
-    return 0;
 }
