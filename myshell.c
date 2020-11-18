@@ -18,8 +18,8 @@ int indexOf(char **array, char *item, int count) {
     return -1;
 }
 
-void execFromArgs(char **args) {
-    execvp(args[0], args);
+int execFromArgs(char **args) {
+    return execvp(args[0], args);
 }
 
 /**
@@ -92,7 +92,8 @@ int processCmd(int count, char **arglist, int *pipe, int pipeDirection, int proc
                 }
             }
             execFromArgs(arglist);
-            break;
+            printf("execvp failed: %s\n", strerror(1));
+            exit(1);
         default:
             //Parent
             if (!isBackground) {
