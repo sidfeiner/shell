@@ -6,8 +6,6 @@
 #include <unistd.h>
 #include <signal.h>
 
-int runningProcesses[2];
-
 /**
  * Returns the index of the first appearance of `item` in array, -1 if not found
  */
@@ -27,26 +25,9 @@ void execFromArgs(char **args) {
 /**
  * wait for process to end and once it's done, remove it from the running processes array
  */
-void waitAndPurge(pid_t pid, int index) {
+void waitPid(pid_t pid) {
     int status;
     waitpid(pid, &status, WCONTINUED | WUNTRACED);
-    runningProcesses[index] = 0;
-}
-
-
-void purgeProcessAtIndex(int index, int sig) {
-    if (runningProcesses[index] != 0) {
-        printf("purging\n");
-        kill(runningProcesses[index], sig);
-        runningProcesses[index] = 0;
-    }
-}
-
-
-void SIGINTHandler(int sig) {
-    printf("sigint handler\n");
-    purgeProcessAtIndex(0, sig);
-    purgeProcessAtIndex(1, sig);
 }
 
 int initHandler(int s, void (*f)(int)) {
@@ -59,7 +40,7 @@ int initHandler(int s, void (*f)(int)) {
 
 // prepare and finalize calls for initialization and destruction of anything required
 int prepare() {
-    if (initHandler(SIGINT , SIG_IGN) + initHandler(SIGCHLD, SIG_IGN)< 0) {
+    if (initHandler(SIGINT, SIG_IGN) + initHandler(SIGCHLD, SIG_IGN) < 0) {
         printf("could not define SIGINT/SIGCHLD handler: %s\n", strerror(6));
         return 6;
     }
@@ -115,9 +96,8 @@ int processCmd(int count, char **arglist, int *pipe, int pipeDirection, int proc
         default:
             //Parent
             if (!isBackground) {
-                runningProcesses[processIndex] = pid;
                 if (block == 1) {
-                    waitAndPurge(pid, processIndex);
+                    waitPid(pid);
                 }
             }
     }
@@ -146,8 +126,8 @@ int handlePipe(int count, char **arglist, int indexOfPipe) {
     close(fds[0]);
     close(fds[1]);
 
-    waitAndPurge(firstChildPid, 0);
-    waitAndPurge(secondChildPid, 1);
+    waitPid(firstChildPid);
+    waitPid(secondChildPid);
     return 1;
 }
 
