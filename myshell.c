@@ -6,6 +6,8 @@
 #include <unistd.h>
 #include <signal.h>
 
+int foregroundProcesses[2];
+
 /**
  * Returns the index of the first appearance of `item` in array, -1 if not found
  */
@@ -33,14 +35,28 @@ void waitPid(pid_t pid) {
 int initHandler(int s, void (*f)(int)) {
     struct sigaction sa;
     sa.sa_handler = f;
-    sa.sa_flags = 0;
+    sa.sa_flags = SA_RESTART;
     sigemptyset(&sa.sa_mask);
     return sigaction(s, &sa, NULL);
 }
 
+void killForegroundProcess(int index) {
+    if (foregroundProcesses[index] != 0) {
+        kill(foregroundProcesses[index], SIGKILL);
+        foregroundProcesses[index] = 0;
+    }
+}
+
+void sigIntHandler(int sig) {
+    if (sig == SIGINT) {
+        killForegroundProcess(0);
+        killForegroundProcess(1);
+    }
+}
+
 // prepare and finalize calls for initialization and destruction of anything required
 int prepare() {
-    if (initHandler(SIGINT, SIG_IGN) + initHandler(SIGCHLD, SIG_IGN) < 0) {
+    if (initHandler(SIGINT, sigIntHandler) + initHandler(SIGCHLD, SIG_IGN) < 0) {
         printf("could not define SIGINT/SIGCHLD handler: %s\n", strerror(6));
         return 6;
     }
@@ -48,7 +64,7 @@ int prepare() {
 }
 
 int finalize() {
-    return 0;
+
 }
 
 
@@ -60,7 +76,7 @@ int finalize() {
  *              Otherwise, will block for pid until done
  * @return
  */
-int processCmd(int count, char **arglist, int *pipe, int pipeDirection, int processIndex, int block) {
+int processCmd(int count, char **arglist, int *pipe, int pipeDirection, int block, int index) {
     int isBackground = arglist[count - 1][0] == '&' ? 1 : 0;
     pid_t pid = fork();
     switch (pid) {
@@ -69,12 +85,9 @@ int processCmd(int count, char **arglist, int *pipe, int pipeDirection, int proc
             return -1;
         case 0:
             // Child
-            if (!isBackground) {
-                // If this is a foreground process, ensure default behaviour is enabled
-                if (initHandler(SIGINT, SIG_DFL) < 0) {
-                    printf("could not define SIGINT handler in child: %s\n", strerror(6));
-                    return 6;
-                }
+            if (initHandler(SIGINT, SIG_IGN) < 0) {
+                printf("could not define SIGINT handler in child: %s\n", strerror(6));
+                return 6;
             }
             if (isBackground) {
                 arglist[count - 1] = NULL;  // Remove ampersand from command arguments
@@ -98,7 +111,9 @@ int processCmd(int count, char **arglist, int *pipe, int pipeDirection, int proc
             //Parent
             if (!isBackground) {
                 if (block == 1) {
+                    foregroundProcesses[index] = pid;
                     waitPid(pid);
+                    foregroundProcesses[index] = 0;
                 }
             }
     }
@@ -121,7 +136,7 @@ int handlePipe(int count, char **arglist, int indexOfPipe) {
     }
 
     // Run second command, arguments being after the pipe
-    if (-1 == (secondChildPid = processCmd(count - (indexOfPipe + 1), arglist + 1 + indexOfPipe, fds, 0, 1, 0))) {
+    if (-1 == (secondChildPid = processCmd(count - (indexOfPipe + 1), arglist + 1 + indexOfPipe, fds, 0, 0, 1))) {
         return -1;
     }
     close(fds[0]);
@@ -137,7 +152,7 @@ int process_arglist(int count, char **arglist) {
     if (indexOfPipe >= 0) {
         return handlePipe(count, arglist, indexOfPipe);
     } else {
-        int pid = processCmd(count, arglist, NULL, -1, 0, 1);
+        int pid = processCmd(count, arglist, NULL, -1, 1, 0);
         return pid >= 0 ? 1 : 0;
     }
 }
