@@ -63,9 +63,7 @@ int prepare() {
     return 0;
 }
 
-int finalize() {
-
-}
+int finalize() {}
 
 
 /**
