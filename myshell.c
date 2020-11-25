@@ -65,6 +65,11 @@ int prepare() {
 
 int finalize() {}
 
+void blockSignal(int sig, sigset_t *set) {
+    sigemptyset(set);
+    sigaddset(set, sig);
+    sigprocmask(SIG_BLOCK, set, NULL);
+}
 
 /**
  * @param pipe array with file descriptors. NULL if no piping is needed
@@ -75,7 +80,9 @@ int finalize() {}
  * @return
  */
 int processCmd(int count, char **arglist, int *pipe, int pipeDirection, int block, int index) {
+    sigset_t blockSet;
     int isBackground = arglist[count - 1][0] == '&' ? 1 : 0;
+    if (!isBackground && block == 1) blockSignal(SIGINT, &blockSet); // Block SIGINT until child process is persisted
     pid_t pid = fork();
     switch (pid) {
         case -1:
@@ -107,12 +114,11 @@ int processCmd(int count, char **arglist, int *pipe, int pipeDirection, int bloc
             exit(1);
         default:
             //Parent
-            if (!isBackground) {
-                if (block == 1) {
-                    foregroundProcesses[index] = pid;
-                    waitPid(pid);
-                    foregroundProcesses[index] = 0;
-                }
+            if (!isBackground && block == 1) {
+                foregroundProcesses[index] = pid;
+                sigprocmask(SIG_UNBLOCK, &blockSet, NULL);  // Now pid has been persisted, handle SIGINT if needed
+                waitPid(pid);
+                foregroundProcesses[index] = 0;
             }
     }
     return pid;
