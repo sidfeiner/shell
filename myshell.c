@@ -25,11 +25,11 @@ int execFromArgs(char **args) {
 }
 
 /**
- * wait for process to end and once it's done, remove it from the running processes array
+ * wait for process to end
  */
 void waitPid(pid_t pid) {
     int status;
-    waitpid(pid, &status, WCONTINUED | WUNTRACED);
+    waitpid(pid, &status, WUNTRACED);
 }
 
 int initHandler(int s, void (*f)(int)) {
@@ -63,7 +63,7 @@ int prepare() {
     return 0;
 }
 
-int finalize() {}
+int finalize() { return 0; }
 
 void blockSignal(int sig, sigset_t *set) {
     sigemptyset(set);
