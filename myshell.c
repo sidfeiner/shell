@@ -27,9 +27,9 @@ int execFromArgs(char **args) {
 /**
  * wait for process to end
  */
-void waitPid(pid_t pid) {
+pid_t waitPid(pid_t pid) {
     int status;
-    waitpid(pid, &status, WUNTRACED);
+    return waitpid(pid, &status, WUNTRACED);
 }
 
 int initHandler(int s, void (*f)(int)) {
